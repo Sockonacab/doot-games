@@ -7,6 +7,7 @@ import { getMediaDir } from './upload.post'
 const EXT_MIME: Record<string, string> = {
   '.mp4': 'video/mp4',
   '.webm': 'video/webm',
+  '.mkv': 'video/x-matroska',
   '.mp3': 'audio/mpeg',
   '.ogg': 'audio/ogg',
   '.wav': 'audio/wav',

@@ -5,6 +5,8 @@ import { join } from 'node:path'
 const ALLOWED_TYPES: Record<string, { ext: string; maxBytes: number }> = {
   'video/mp4': { ext: 'mp4', maxBytes: 250 * 1024 * 1024 },
   'video/webm': { ext: 'webm', maxBytes: 250 * 1024 * 1024 },
+  'video/x-matroska': { ext: 'mkv', maxBytes: 250 * 1024 * 1024 },
+  'video/mkv': { ext: 'mkv', maxBytes: 250 * 1024 * 1024 },
   'audio/mpeg': { ext: 'mp3', maxBytes: 50 * 1024 * 1024 },
   'audio/mp3': { ext: 'mp3', maxBytes: 50 * 1024 * 1024 },
   'audio/ogg': { ext: 'ogg', maxBytes: 50 * 1024 * 1024 },
