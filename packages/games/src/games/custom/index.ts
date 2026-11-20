@@ -32,6 +32,7 @@ import { tierBlock } from '../../blocks/tier/block'
 import { titleBlock } from '../../blocks/title/block'
 import { wagerBlock } from '../../blocks/wager/block'
 import { voteBlock } from '../../blocks/vote/block'
+import { videoGuessBlock } from '../../blocks/video-guess/block'
 
 export const custom = defineGame({
   manifest: {
@@ -77,6 +78,7 @@ export const custom = defineGame({
     fibBlock,
     fakerBlock,
     accuseBlock,
+    videoGuessBlock,
   ],
   defaultConfig: {
     title: 'Custom Game',

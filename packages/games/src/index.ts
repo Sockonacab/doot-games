@@ -48,6 +48,7 @@ export { titleBlock } from './blocks/title/block'
 export { bingoBlock } from './blocks/bingo/block'
 export { callitBlock } from './blocks/callit/block'
 export { tierBlock } from './blocks/tier/block'
+export { videoGuessBlock } from './blocks/video-guess/block'
 export * from './blocks/scoring'
 
 // Games (block compositions). One export per registered game; folders match ids.

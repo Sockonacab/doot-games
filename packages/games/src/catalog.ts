@@ -64,6 +64,7 @@ export const gameCatalog: GameCatalogEntry[] = [
   { id: 'retro-arcade', name: 'Retro Arcade', version: '0.1.0', flagship: true, description: 'Any ROM, played together. Phones and gamepads are the controllers, in the room or remote.' },
   { id: 'pit-party', name: 'Pit Party', version: '0.1.0', flagship: true, description: 'A split-screen kart Grand Prix. Drive from your phone, drift for boosts, race for the cup.' },
   { id: 'custom', name: 'Custom', version: '0.1.0', flagship: false, description: 'Mix any blocks, or paste a markdown spec to build a whole game at once.' },
+  { id: 'video-guess', name: 'Video Guess', version: '0.1.0', flagship: false, description: 'Watch a clip, guess the ending on your phone, and see the reveal clip.' },
 ]
 
 /** The first-party ready-to-play games ("Games From Doot"). */
@@ -112,6 +113,7 @@ export const REDACTION_RULES: Record<string, Record<string, unknown>> = {
   // flags live in the cellar block content: blank the answer-bearing arrays so a
   // non-owner viewing a saved game can't read the answers.
   cellar: { questions: [], finalCats: [] },
+  'video-guess': { correct: -1, revealVideo: '' },
 }
 
 // ── Deck redaction (data-only, server-safe) ─────────────────────────────────

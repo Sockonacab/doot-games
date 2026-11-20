@@ -4,13 +4,14 @@
  * recurses for objects, arrays, and discriminated unions. It also applies a few
  * Doot field-name conventions on top of the raw schema:
  *   - `image` (string)            → URL input + live preview
+ *   - `video` / `audio` (string)  → URL input + drag/drop & button upload + recent files
  *   - `timer` / any nullable num  → a number with an on/off toggle
  *   - `prompt` / `body`           → a multi-line textarea
  *   - `correct` (number, with a sibling `options` array) → a "mark correct" select
  *   - `id` inside an array item   → a compact, auto-seeded slug field
  * Anything it doesn't recognise falls back to a plain input for its kind.
  */
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import ImageField from '../components/ImageField.vue'
 import { type FieldNode, blankValue, humanizeName, reindexAfterArrayEdit } from './introspect'
 
@@ -32,6 +33,10 @@ const hint = computed(() => props.node.description ?? '')
 // Any string field named `image` or ending in `Image` (e.g. `revealImage`) gets the
 // URL+preview+upload control, not a bare text box.
 const isImage = computed(() => props.node.kind === 'string' && /(^|[a-z])image$/i.test(props.name))
+// Media fields (`video`, `revealVideo`, `audio`, etc.) get drag-and-drop + button upload.
+const isMedia = computed(
+  () => props.node.kind === 'string' && /(^|[a-z])(video|audio)$/i.test(props.name),
+)
 // Multi-line fields: a question prompt, or a slide's body copy.
 const isPrompt = computed(() => props.node.kind === 'string' && (props.name === 'prompt' || props.name === 'body'))
 const isId = computed(() => props.node.kind === 'string' && props.name === 'id')
@@ -48,6 +53,70 @@ const optionLabels = computed(() => {
     return label && label.trim() ? label : `Option ${i + 1}`
   })
 })
+
+// ── media upload + recent files ──────────────────────────────────────
+const isDragging = ref(false)
+const uploading = ref(false)
+const uploadError = ref('')
+const fileInputEl = ref<HTMLInputElement | null>(null)
+const uploadedFiles = ref<Array<{ filename: string; url: string }>>([])
+
+async function loadUploadedFiles() {
+  if (!isMedia.value) return
+  try {
+    const res = await fetch('/api/media/list')
+    if (!res.ok) return
+    const data = (await res.json()) as { files?: Array<{ filename: string; url: string }> }
+    if (Array.isArray(data.files)) {
+      uploadedFiles.value = data.files
+    }
+  } catch {
+    // Optional endpoint; ignore if unavailable.
+  }
+}
+
+onMounted(() => {
+  void loadUploadedFiles()
+})
+
+async function uploadMediaFile(file: File | undefined) {
+  if (!file) return
+  uploadError.value = ''
+  uploading.value = true
+  try {
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await fetch('/api/media/upload', {
+      method: 'POST',
+      body: fd,
+    })
+    const data = (await res.json().catch(() => ({}))) as {
+      url?: string
+      filename?: string
+      statusMessage?: string
+      message?: string
+    }
+    if (!res.ok || !data.url) {
+      throw new Error(data.statusMessage || data.message || `Upload failed (${res.status}).`)
+    }
+    emit('update:modelValue', data.url)
+    if (data.filename && !uploadedFiles.value.some((f) => f.url === data.url)) {
+      uploadedFiles.value = [{ filename: data.filename, url: data.url }, ...uploadedFiles.value]
+    }
+  } catch (err) {
+    uploadError.value = err instanceof Error ? err.message : 'Upload failed.'
+  } finally {
+    uploading.value = false
+    if (fileInputEl.value) fileInputEl.value.value = ''
+  }
+}
+
+function onMediaDrop(e: DragEvent) {
+  e.preventDefault()
+  isDragging.value = false
+  const file = e.dataTransfer?.files?.[0]
+  void uploadMediaFile(file)
+}
 
 // ── object ────────────────────────────────────────────────────────────
 const objValue = computed(() => (props.modelValue ?? {}) as Record<string, unknown>)
@@ -133,6 +202,61 @@ function toggleNullableNumber(on: boolean) {
     :model-value="(modelValue as string) ?? ''"
     @update:model-value="emit('update:modelValue', $event)"
   />
+
+  <!-- media (video / audio): url input + drag/drop & button upload + uploaded list -->
+  <div v-else-if="isMedia" class="sf-field">
+    <span class="sf-label">{{ label }}</span>
+    <input
+      class="sf-input"
+      :maxlength="node.maxLength"
+      :value="(modelValue as string) ?? ''"
+      placeholder="/api/media/... or https://..."
+      @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
+    />
+    <div
+      class="sf-dropzone"
+      :class="{ 'is-dragging': isDragging }"
+      @dragover.prevent="isDragging = true"
+      @dragleave.prevent="isDragging = false"
+      @drop="onMediaDrop"
+    >
+      <input
+        ref="fileInputEl"
+        type="file"
+        accept="video/mp4,video/webm,audio/*,image/*"
+        hidden
+        @change="uploadMediaFile(($event.target as HTMLInputElement).files?.[0])"
+      />
+      <span class="sf-dropzone-text">
+        {{ uploading ? 'Uploading media...' : 'Drag & drop a video/audio file here, or' }}
+      </span>
+      <button
+        type="button"
+        class="btn btn-ghost btn-sm"
+        :disabled="uploading"
+        @click="fileInputEl?.click()"
+      >
+        {{ uploading ? 'Uploading...' : 'Choose file' }}
+      </button>
+    </div>
+    <select
+      v-if="uploadedFiles.length > 0"
+      class="sf-select"
+      style="margin-top: 8px"
+      :value="uploadedFiles.some((f) => f.url === modelValue) ? String(modelValue) : ''"
+      @change="
+        const chosen = ($event.target as HTMLSelectElement).value;
+        if (chosen) emit('update:modelValue', chosen)
+      "
+    >
+      <option value="">Pick from previously uploaded files...</option>
+      <option v-for="f in uploadedFiles" :key="f.url" :value="f.url">
+        {{ f.filename }}
+      </option>
+    </select>
+    <p v-if="uploadError" class="sf-hint sf-error">{{ uploadError }}</p>
+    <p v-else-if="hint" class="sf-hint">{{ hint }}</p>
+  </div>
 
   <!-- prompt: textarea -->
   <label v-else-if="isPrompt" class="sf-field">
@@ -323,3 +447,29 @@ function toggleNullableNumber(on: boolean) {
     </div>
   </div>
 </template>
+
+<style scoped>
+.sf-dropzone {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px dashed var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.sf-dropzone.is-dragging {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, var(--surface-2));
+}
+.sf-dropzone-text {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.sf-error {
+  color: var(--danger, #e11d48);
+}
+</style>

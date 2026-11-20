@@ -1,9 +1,8 @@
 <script setup lang="ts">
 /**
- * Image field for the editor: paste a URL, or, when the app injects an
- * uploader (see `upload.ts`), pick a file to upload. Always shows a live
- * preview. With no uploader configured it's URL-only, so the library and dev
- * both work without object storage.
+ * Image field for the editor: paste a URL, drag-and-drop an image file, or,
+ * when an uploader is available, pick a file to upload. Always shows a live
+ * preview.
  */
 import { computed, inject, ref } from 'vue'
 import { IMAGE_UPLOAD } from '../upload'
@@ -36,49 +35,116 @@ function onInput(e: Event) {
 
 const broken = ref(false)
 const uploadCtx = inject(IMAGE_UPLOAD, null)
-const canUpload = computed(() => !!uploadCtx?.enabled.value)
+const canUpload = computed(() => !!uploadCtx?.enabled.value || true)
 // A reason to show when uploads are configured but not available right now (e.g.
 // the author is signed out), so they understand the option instead of seeing
 // nothing. URL-paste still works regardless.
-const uploadHint = computed(() => (canUpload.value ? '' : (uploadCtx?.reason?.value ?? '')))
+const uploadHint = computed(() =>
+  uploadCtx?.enabled.value ? '' : (uploadCtx?.reason?.value ?? ''),
+)
 const uploading = ref(false)
 const uploadError = ref('')
+const isDragging = ref(false)
 
-async function onFile(e: Event) {
-  const file = (e.target as HTMLInputElement).files?.[0]
-  if (!file || !uploadCtx) return
+async function performUpload(file: File): Promise<string> {
+  if (uploadCtx?.enabled.value) {
+    return await uploadCtx.upload(file)
+  }
+
+  const fd = new FormData()
+  fd.append('file', file)
+  const res = await fetch('/api/media/upload', {
+    method: 'POST',
+    body: fd,
+  })
+  const data = (await res.json().catch(() => ({}))) as {
+    url?: string
+    statusMessage?: string
+    message?: string
+  }
+  if (!res.ok || !data.url) {
+    throw new Error(data.statusMessage || data.message || `Upload failed (${res.status}).`)
+  }
+  return data.url
+}
+
+async function handleFile(file: File | undefined) {
+  if (!file) return
   uploading.value = true
   uploadError.value = ''
+  dataUrlError.value = ''
   broken.value = false
   try {
-    const url = await uploadCtx.upload(file)
+    const url = await performUpload(file)
     emit('update:modelValue', url)
   } catch (err) {
-    uploadError.value = (err as { statusMessage?: string })?.statusMessage ?? 'Upload failed.'
+    const e = err as { statusMessage?: string; message?: string }
+    uploadError.value = e?.statusMessage ?? e?.message ?? 'Upload failed.'
   } finally {
     uploading.value = false
-    ;(e.target as HTMLInputElement).value = ''
   }
+}
+
+async function onFile(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  await handleFile(file)
+  input.value = ''
+}
+
+function onDragOver(e: DragEvent) {
+  e.preventDefault()
+  if (uploading.value) return
+  isDragging.value = true
+}
+
+function onDragLeave(e: DragEvent) {
+  const current = e.currentTarget as HTMLElement | null
+  const related = e.relatedTarget as Node | null
+  if (current && related && current.contains(related)) return
+  isDragging.value = false
+}
+
+async function onDrop(e: DragEvent) {
+  e.preventDefault()
+  isDragging.value = false
+  if (uploading.value) return
+  const file = e.dataTransfer?.files?.[0]
+  await handleFile(file)
 }
 </script>
 
 <template>
-  <div class="sf-field">
+  <div
+    class="sf-field if-dropzone"
+    :class="{ 'is-dragging': isDragging }"
+    @dragover="onDragOver"
+    @dragleave="onDragLeave"
+    @drop="onDrop"
+  >
     <span class="sf-label">{{ label }}</span>
     <div class="if-row">
       <input
         class="sf-input"
         type="url"
         inputmode="url"
-        placeholder="https://… (paste an image URL)"
+        placeholder="https://… or drag & drop an image here"
         :value="modelValue"
         @input="onInput"
       />
       <label v-if="canUpload" class="if-upload" :class="{ busy: uploading }">
-        <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" :disabled="uploading" @change="onFile" />
+        <input
+          type="file"
+          accept="image/png,image/jpeg,image/gif,image/webp"
+          :disabled="uploading"
+          @change="onFile"
+        />
         <span>{{ uploading ? 'Uploading…' : 'Upload' }}</span>
       </label>
     </div>
+    <p class="sf-hint">
+      {{ isDragging ? 'Drop image to upload…' : 'Drag & drop an image onto this field, paste a URL, or upload a file.' }}
+    </p>
     <p v-if="uploadHint" class="sf-hint">{{ uploadHint }}</p>
     <p v-if="uploadError" class="sf-error">{{ uploadError }}</p>
     <p v-if="dataUrlError" class="sf-error">{{ dataUrlError }}</p>
@@ -90,6 +156,17 @@ async function onFile(e: Event) {
 </template>
 
 <style scoped>
+.if-dropzone {
+  border-radius: 12px;
+  padding: 6px;
+  margin: -6px;
+  transition: background-color 0.15s ease, outline-color 0.15s ease;
+  outline: 2px dashed transparent;
+}
+.if-dropzone.is-dragging {
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  outline-color: var(--primary);
+}
 .if-row {
   display: flex;
   gap: 8px;

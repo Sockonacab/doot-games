@@ -41,6 +41,7 @@ import { wouldYouRather } from './games/would-you-rather'
 import { voteBox } from './games/votebox'
 import { wavelength } from './games/wavelength'
 import { whatYouDidntKnow } from './games/what-you-didnt-know'
+import { videoGuess } from './games/video-guess'
 
 export const builtinPlugins: GamePlugin[] = [
   guess,
@@ -80,6 +81,7 @@ export const builtinPlugins: GamePlugin[] = [
   callIt,
   retroArcade,
   pitParty,
+  videoGuess,
   custom,
 ]
 
